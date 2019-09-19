@@ -1,0 +1,693 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Mappings:
+  RegionMapping:
+    us-east-1:
+    RHELAMI: ami-6871a115
+#     The following AMI is the red hat gold image for cloud access subscribers 
+#     RHELAMI: ami-xxxxxxxxx
+    us-east-2:
+      RHELAMI: ami-03291866
+    us-west-1:
+      RHELAMI: ami-18726478
+    us-west-2:
+      RHELAMI: ami-28e07e50
+    eu-west-1:
+      RHELAMI: ami-7c491f05
+    eu-central-1:
+      RHELAMI: ami-c86c3f23
+    ap-northeast-1:
+      RHELAMI: ami-6b0d5f0d
+    ap-northeast-2:
+      RHELAMI: ami-3eee4150
+    ap-southeast-1:
+      RHELAMI: ami-76144b0a
+    ap-southeast-2:
+      RHELAMI: ami-67589505
+    ap-south-1:
+      RHELAMI: ami-5b673c34
+    sa-east-1:
+      RHELAMI: ami-b0b7e3dc
+  DNSMapping:
+    us-east-1:
+      domain: "us-east-1.compute.internal"
+    us-west-1:
+      domain: "us-west-1.compute.internal"
+    us-west-2:
+      domain: "us-west-2.compute.internal"
+    eu-west-1:
+      domain: "eu-west-1.compute.internal"
+    eu-central-1:
+      domain: "eu-central-1.compute.internal"
+    ap-northeast-1:
+      domain: "ap-northeast-1.compute.internal"
+    ap-northeast-2:
+      domain: "ap-northeast-2.compute.internal"
+    ap-southeast-1:
+      domain: "ap-southeast-1.compute.internal"
+    ap-southeast-2:
+      domain: "ap-southeast-2.compute.internal"
+    sa-east-1:
+      domain: "sa-east-1.compute.internal"
+    ap-south-1:
+      domain: "ap-south-1.compute.internal"
+
+Resources:
+  Vpc:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "192.168.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: "25.jimbarlow.com"
+        - Key: Hostlication
+          Value:
+            Ref: "AWS::StackId"
+
+  VpcInternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+
+  VpcGA:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      InternetGatewayId:
+        Ref: VpcInternetGateway
+      VpcId:
+        Ref: Vpc
+
+  VpcRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: Vpc
+
+  VPCRouteInternetGateway:
+    DependsOn: VpcGA
+    Type: "AWS::EC2::Route"
+    Properties:
+      GatewayId:
+        Ref: VpcInternetGateway
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId:
+        Ref: VpcRouteTable
+
+  PublicSubnet:
+    Type: "AWS::EC2::Subnet"
+    DependsOn:
+      - Vpc
+    Properties:
+      CidrBlock: "192.168.0.0/24"
+      Tags:
+        - Key: Name
+          Value: "ocp-workshop-25"
+        - Key: Hostlication
+          Value:
+            Ref: "AWS::StackId"
+      MapPublicIpOnLaunch: true
+      VpcId:
+        Ref: Vpc
+
+  PublicSubnetRTA:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId:
+        Ref: VpcRouteTable
+      SubnetId:
+        Ref: PublicSubnet
+
+  HostSG:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Host
+      VpcId:
+        Ref: Vpc
+      Tags:
+        - Key: Name
+          Value: host_sg
+
+  HostUDPPorts:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId:
+        Fn::GetAtt:
+          - HostSG
+          - GroupId
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+      CidrIp: "0.0.0.0/0"
+
+  HostTCPPorts:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId:
+        Fn::GetAtt:
+          - HostSG
+          - GroupId
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      CidrIp: "0.0.0.0/0"
+
+  zoneinternalidns:
+    Type: "AWS::Route53::HostedZone"
+    Properties:
+      Name: "25.internal."
+      VPCs:
+        - VPCId:
+            Ref: Vpc
+          VPCRegion:
+            Ref: "AWS::Region"
+      HostedZoneConfig:
+        Comment: "Created By ansible agnostic deployer"
+
+  CerttestDNS:
+      Type: AWS::Route53::RecordSetGroup
+      DependsOn:
+        - master1EIP
+      Properties:
+        HostedZoneId: "ZFYU1USSS3ABS"
+        RecordSets:
+          - Name: "certtest.25.jimbarlow.com."
+            Type: A
+            TTL: 900
+            ResourceRecords:
+              - Fn::GetAtt:
+                  - master1
+                  - PublicIp
+
+  CloudDNS:
+    Type: AWS::Route53::RecordSetGroup
+    DependsOn:
+      - "infranode1EIP"
+    Properties:
+      HostedZoneId: "ZFYU1USSS3ABS"
+      RecordSets:
+        - Name: "*.apps.25.jimbarlow.com."
+          Type: A
+          TTL: 900
+          ResourceRecords:
+            - Fn::GetAtt:
+                - infranode1
+                - PublicIp
+
+
+  bastion1:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - RegionMapping
+        - Ref: AWS::Region
+        - RHELAMI
+      InstanceType: "t2.large"
+      KeyName: "openshift-aws"
+      SecurityGroupIds:
+        - "Fn::GetAtt":
+          - HostSG
+          - GroupId
+      SubnetId:
+        Ref: PublicSubnet
+      Tags:
+        - Key: Name
+          Value: bastion
+        - Key: internaldns
+          Value: bastion.25.internal
+        - Key: "owner"
+          Value: "jbarlow@redhat.com"
+        - Key: "Project"
+          Value: "ocp-workshop-25"
+        - Key: "ocp-workshop-25"
+          Value: "bastion"
+        - Key: AnsibleGroup
+          Value: bastions
+        - Key: ostype
+          Value: linux
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp2
+
+  bastion1InternalDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneId:
+        Ref: zoneinternalidns
+      RecordSets:
+      - Name: "bastion.25.internal."
+        Type: A
+        TTL: 3600
+        ResourceRecords:
+          - "Fn::GetAtt":
+            - bastion1
+            - PrivateIp
+
+  bastion1EIP:
+    Type: "AWS::EC2::EIP"
+    DependsOn:
+    - VpcGA
+    Properties:
+      Domain: vpc
+      InstanceId:
+        Ref: bastion1
+
+  bastion1PublicDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    DependsOn:
+      - bastion1EIP
+    Properties:
+      HostedZoneId: ZFYU1USSS3ABS
+      RecordSets:
+          - Name: "bastion.25.jimbarlow.com."
+            Type: A
+            TTL: 900
+            ResourceRecords:
+            - "Fn::GetAtt":
+              - bastion1
+              - PublicIp
+  masterDNSLoadBalancer:
+    Type: "AWS::Route53::RecordSetGroup"
+    DependsOn:
+      - master1EIP
+    Properties:
+      HostedZoneId: ZFYU1USSS3ABS
+      RecordSets:
+      - Name: "master.25.jimbarlow.com."
+        Type: A
+        TTL: 900
+        ResourceRecords:
+          - "Fn::GetAtt":
+            - master1
+            - PublicIp
+
+  master1:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - RegionMapping
+        - Ref: AWS::Region
+        - RHELAMI
+      InstanceType: "m4.2xlarge"
+      KeyName: "openshift-aws"
+      SecurityGroupIds:
+        - "Fn::GetAtt":
+          - HostSG
+          - GroupId
+      SubnetId:
+        Ref: PublicSubnet
+      Tags:
+        - Key: Name
+          Value: master1
+        - Key: internaldns
+          Value: master1.25.internal
+        - Key: "owner"
+          Value: "jbarlow@redhat.com"
+        - Key: "Project"
+          Value: "ocp-workshop-25"
+        - Key: "ocp-workshop-25"
+          Value: "master"
+        - Key: AnsibleGroup
+          Value: masters
+        - Key: ostype
+          Value: linux
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 50
+            VolumeType: gp2
+        - DeviceName: "/dev/xvdb"
+          Ebs:
+            VolumeType: "gp2"
+            VolumeSize: "20"
+
+  master1InternalDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneId:
+        Ref: zoneinternalidns
+      RecordSets:
+      - Name: "master1.25.internal."
+        Type: A
+        TTL: 3600
+        ResourceRecords:
+          - "Fn::GetAtt":
+            - master1
+            - PrivateIp
+
+  master1EIP:
+    Type: "AWS::EC2::EIP"
+    DependsOn:
+    - VpcGA
+    Properties:
+      Domain: vpc
+      InstanceId:
+        Ref: master1
+
+  master1PublicDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    DependsOn:
+      - master1EIP
+    Properties:
+      HostedZoneId: ZFYU1USSS3ABS
+      RecordSets:
+          - Name: "master1.25.jimbarlow.com."
+            Type: A
+            TTL: 900
+            ResourceRecords:
+            - "Fn::GetAtt":
+              - master1
+              - PublicIp
+
+  node1:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - RegionMapping
+        - Ref: AWS::Region
+        - RHELAMI
+      InstanceType: "m4.xlarge"
+      KeyName: "openshift-aws"
+      SecurityGroupIds:
+        - "Fn::GetAtt":
+          - HostSG
+          - GroupId
+      SubnetId:
+        Ref: PublicSubnet
+      Tags:
+        - Key: Name
+          Value: node1
+        - Key: internaldns
+          Value: node1.25.internal
+        - Key: "owner"
+          Value: "jbarlow@redhat.com"
+        - Key: "Project"
+          Value: "ocp-workshop-25"
+        - Key: "ocp-workshop-25"
+          Value: "node"
+        - Key: AnsibleGroup
+          Value: nodes
+        - Key: ostype
+          Value: linux
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 50
+            VolumeType: gp2
+        - DeviceName: "/dev/xvdb"
+          Ebs:
+            VolumeType: "gp2"
+            VolumeSize: "100"
+
+  node1InternalDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneId:
+        Ref: zoneinternalidns
+      RecordSets:
+      - Name: "node1.25.internal."
+        Type: A
+        TTL: 3600
+        ResourceRecords:
+          - "Fn::GetAtt":
+            - node1
+            - PrivateIp
+
+  infranodeDNSLoadBalancer:
+    Type: "AWS::Route53::RecordSetGroup"
+    DependsOn:
+      - infranode1EIP
+    Properties:
+      HostedZoneId: ZFYU1USSS3ABS
+      RecordSets:
+      - Name: "infranode.25.jimbarlow.com."
+        Type: A
+        TTL: 900
+        ResourceRecords:
+          - "Fn::GetAtt":
+            - infranode1
+            - PublicIp
+
+  infranode1:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - RegionMapping
+        - Ref: AWS::Region
+        - RHELAMI
+      InstanceType: "m4.2xlarge"
+      KeyName: "openshift-aws"
+      SecurityGroupIds:
+        - "Fn::GetAtt":
+          - HostSG
+          - GroupId
+      SubnetId:
+        Ref: PublicSubnet
+      Tags:
+        - Key: Name
+          Value: infranode1
+        - Key: internaldns
+          Value: infranode1.25.internal
+        - Key: "owner"
+          Value: "jbarlow@redhat.com"
+        - Key: "Project"
+          Value: "ocp-workshop-25"
+        - Key: "ocp-workshop-25"
+          Value: "infranode"
+        - Key: AnsibleGroup
+          Value: infranodes
+        - Key: ostype
+          Value: linux
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 150
+            VolumeType: gp2
+        - DeviceName: "/dev/xvdb"
+          Ebs:
+            VolumeType: "gp2"
+            VolumeSize: "50"
+
+  infranode1InternalDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneId:
+        Ref: zoneinternalidns
+      RecordSets:
+      - Name: "infranode1.25.internal."
+        Type: A
+        TTL: 3600
+        ResourceRecords:
+          - "Fn::GetAtt":
+            - infranode1
+            - PrivateIp
+
+  infranode1EIP:
+    Type: "AWS::EC2::EIP"
+    DependsOn:
+    - VpcGA
+    Properties:
+      Domain: vpc
+      InstanceId:
+        Ref: infranode1
+
+  infranode1PublicDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    DependsOn:
+      - infranode1EIP
+    Properties:
+      HostedZoneId: ZFYU1USSS3ABS
+      RecordSets:
+          - Name: "infranode1.25.jimbarlow.com."
+            Type: A
+            TTL: 900
+            ResourceRecords:
+            - "Fn::GetAtt":
+              - infranode1
+              - PublicIp
+
+  support1:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - RegionMapping
+        - Ref: AWS::Region
+        - RHELAMI
+      InstanceType: "m4.xlarge"
+      KeyName: "openshift-aws"
+      SecurityGroupIds:
+        - "Fn::GetAtt":
+          - HostSG
+          - GroupId
+      SubnetId:
+        Ref: PublicSubnet
+      Tags:
+        - Key: Name
+          Value: support1
+        - Key: internaldns
+          Value: support1.25.internal
+        - Key: "owner"
+          Value: "jbarlow@redhat.com"
+        - Key: "Project"
+          Value: "ocp-workshop-25"
+        - Key: "ocp-workshop-25"
+          Value: "support"
+        - Key: AnsibleGroup
+          Value: support
+        - Key: ostype
+          Value: linux
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp2
+        - DeviceName: "/dev/xvdb"
+          Ebs:
+            VolumeType: "gp2"
+            VolumeSize: "50"
+        - DeviceName: "/dev/xvdd"
+          Ebs:
+            VolumeType: "gp2"
+            VolumeSize: "200"
+
+  support1InternalDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneId:
+        Ref: zoneinternalidns
+      RecordSets:
+      - Name: "support1.25.internal."
+        Type: A
+        TTL: 3600
+        ResourceRecords:
+          - "Fn::GetAtt":
+            - support1
+            - PrivateIp
+
+
+  Route53User:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+        - PolicyName: Route53Access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: route53domains:*
+                Resource: "*"
+              - Effect: Allow
+                Action: route53:*
+                Resource: "*"
+
+  Route53UserAccessKey:
+      DependsOn: Route53User
+      Type: AWS::IAM::AccessKey
+      Properties:
+        UserName:
+          Ref: Route53User
+
+  RegistryS3:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: "ocp-workshop-25"
+      Tags:
+        - Key: Name
+          Value: "s3-ocp-workshop-25"
+        - Key: Project
+          Value: "ocp-workshop-25"
+        - Key: owner
+          Value: "jbarlow@redhat.com"
+
+  S3User:
+    Type: AWS::IAM::User
+    DependsOn:
+      - RegistryS3
+    Properties:
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: s3:ListAllMyBuckets
+                Resource: "*"
+              - Effect: Allow
+                Action: "s3:*"
+                Resource:
+                  Fn::Join:
+                    - ""
+                    - - "arn:aws:s3:::"
+                      - Ref: RegistryS3
+                      - "/*"
+
+  S3UserAccessKey:
+      Type: AWS::IAM::AccessKey
+      DependsOn:
+        - S3User
+      Properties:
+        UserName:
+          Ref: S3User
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn:
+      - RegistryS3
+    Properties:
+      PolicyDocument:
+        Id: Give registry access to user
+        Statement:
+          - Sid: AllAccess
+            Action:
+              - "s3:*"
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:aws:s3:::"
+                  - Ref: RegistryS3
+            Principal:
+              AWS:
+                Fn::GetAtt:
+                  - S3User
+                  - Arn
+      Bucket:
+        Ref: RegistryS3
+
+Outputs:
+  Route53internalzoneOutput:
+    Description: The ID of the internal route 53 zone
+    Value:
+      Ref: zoneinternalidns
+  S3User:
+    Value:
+      Ref: S3User
+    Description: IAM User for RegistryS3
+  S3UserAccessKey:
+    Value:
+      Ref: S3UserAccessKey
+    Description: IAM User for RegistryS3
+  S3UserSecretAccessKey:
+    Value:
+      Fn::GetAtt:
+        - S3UserAccessKey
+        - SecretAccessKey
+    Description: IAM User for RegistryS3
+  Route53User:
+    Value:
+      Ref: Route53User
+    Description: IAM User for Route53 (Let's Encrypt)
+  Route53UserAccessKey:
+    Value:
+      Ref: Route53UserAccessKey
+    Description: IAM User for Route53 (Let's Encrypt)
+  Route53UserSecretAccessKey:
+    Value:
+      Fn::GetAtt:
+        - Route53UserAccessKey
+        - SecretAccessKey
+    Description: IAM User for Route53 (Let's Encrypt)
