@@ -57,7 +57,8 @@ openshift_examples_modify_imagestreams=true
 ### OpenShift Container Storage
 ###########################################################################
 
-openshift_master_dynamic_provisioning_enabled=True
+# openshift_master_dynamic_provisioning_enabled=True
+openshift_master_dynamic_provisioning_enabled=False
 
 # CNS storage cluster
 # From https://github.com/red-hat-storage/openshift-cic
@@ -91,8 +92,9 @@ openshift_enable_unsupported_configurations=True
 ###########################################################################
 
 # Enable cockpit
-osm_use_cockpit=true
-osm_cockpit_plugins=['cockpit-kubernetes']
+# jim set the following line to false due to timouts  it should use the conditional in the flags TODO
+osm_use_cockpit=false
+# osm_cockpit_plugins=['cockpit-kubernetes']
 
 ###########################################################################
 ### OpenShift Master Vars

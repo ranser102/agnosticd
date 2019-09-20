@@ -1,0 +1,4 @@
+---
+- name: Enable the workshops catalog
+  hostname: bastion.delata.jimbarlow.com
+  
