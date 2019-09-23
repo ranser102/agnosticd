@@ -1,0 +1,40 @@
+---
+# This puts the workshop serice catalogs into an agnosticd deployed cluster
+# This playbook requires that the environment variables required have been exported before starting
+# source ./env_vars.yml
+- name: Enable the workshops catalog
+  hosts: localhost
+  vars:
+    definition_file: configmap.yaml.j2
+    destination: /usr/share/ansible/openshift-ansible/roles/ansible_service_broker/templates/configmap.yaml.j2
+    # ansible_ssh_private_key_file: ~/.ssh/openshift-aws.pem
+    ansible_user: ec2-user
+  become: false
+
+  tasks:
+    - name: set our variables from environment varabiles preset
+      set_fact:
+        guid: "{{lookup('env','GUID') }}" 
+        basesuffix: "{{lookup('env','BASESUFFIX') }}"
+        ansible_ssh_private_key_file: "{{lookup('env','KEYNAME')}}.pem"
+    - name: did I get the guid?
+      debug:
+        var: guid
+    - name: establish target host
+      set_fact:
+        bastion_host: bastion.{{guid}}{{ basesuffix }}
+    - debug:
+        var: bastion_host
+
+    - name: insert the workshop into the catalog file
+      become: True
+      copy:
+        src: "{{definition_file}}"
+        dest: "{{destination}}"
+      delegate_to: "{{bastion_host}}"
+
+    - name: kick off the catalog update
+      become: True
+      shell: ansible-playbook -i /etc/ansible/hosts /usr/share/ansible/openshift-ansible/playbooks/openshift-service-catalog/config.yml 
+      delegate_to: "{{bastion_host}}"
+        
