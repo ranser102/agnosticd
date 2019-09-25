@@ -5,9 +5,9 @@ Mappings:
   RegionMapping:
     us-east-1:
       {% if osrelease is version_compare('3.9.25', '>=') %}
-      RHELAMI: ami-6871a115
+#     RHELAMI: ami-6871a115
 #     The following AMI is the red hat gold for cloud access subscribers 
-#     RHELAMI: ami-0456c465f72bd0c95
+      RHELAMI: ami-0456c465f72bd0c95
       {% else %}
       RHELAMI: ami-c998b6b2
       {% endif %}
