@@ -1,6 +1,6 @@
 [defaults]
 nocows                  = 1
-private_key_file        =  ~/.ssh/eran-openshift.pem
+private_key_file        =  ~/.ssh/openshift-aws.pem
 roles_path              = roles:ansible/roles
 forks                   = 50
 become                  = False
