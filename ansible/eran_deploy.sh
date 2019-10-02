@@ -31,7 +31,7 @@ ansible-playbook main.yml \
   -e "install_lets_encrypt_certificates=true" \
   -e "email=eran.sery@delta.com" \
   -e "output_dir=/home/934037/awsopenshift/" \
-  -e @eran.secret.yml --skip-tags=opentlc-integration,remove_self_provisioners --ask-vault-pass -v
+  -e @${SECRET_FILE} --skip-tags=opentlc-integration,remove_self_provisioners --ask-vault-pass -v
 
 # Notes: ToDO
 # admin_user: opentlc-mgr

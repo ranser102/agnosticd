@@ -35,6 +35,9 @@
   retries: 10
   delay: 5
 
+- name: disable repos for rhel
+  shell: /usr/bin/subscription-manager repos --disable=\*
+
 - name: enable repos for rhel
   command: subscription-manager repos --enable "{{ item }}"
   with_items:
