@@ -1,5 +1,5 @@
-echo "${GUID} is the guid"
 source eran.env_vars.txt
+echo "${GUID} is the guid"
 ansible-playbook main.yml \
   -e "guid=${GUID}" \
   -e "env_type=${ENVTYPE}" \
