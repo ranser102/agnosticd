@@ -1,4 +1,5 @@
 source eran.env_vars.txt
+export ANSIBLE_VAULT_PASSWORD_FILE=~/.ssh/vault-pass.txt
 echo "${GUID} is the guid"
 ansible-playbook main.yml \
   -e "guid=${GUID}" \
@@ -31,7 +32,7 @@ ansible-playbook main.yml \
   -e "install_lets_encrypt_certificates=true" \
   -e "email=eran.sery@delta.com" \
   -e "output_dir=/home/934037/awsopenshift/" \
-  -e @${SECRET_FILE} --skip-tags=opentlc-integration,remove_self_provisioners --ask-vault-pass -v
+  -e @${SECRET_FILE} --skip-tags=opentlc-integration,remove_self_provisioners -v ##--ask-vault-pass -v
 
 # Notes: ToDO
 # admin_user: opentlc-mgr
