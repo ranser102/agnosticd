@@ -1,5 +1,5 @@
 source jim.env_vars.txt
-export ANSIBLE_VAULT_PASSWORD_FILE=~/.ssh/vault-pass.txt
+export ANSIBLE_VAULT_PASSWORD_FILE=~/.ssh/j-vault-pass.txt
 echo "${GUID} is the guid"
 ansible-playbook main.yml \
   -e "guid=${GUID}" \

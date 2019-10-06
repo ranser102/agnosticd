@@ -18,7 +18,7 @@ log_path=/root
 
 openshift_deployment_type=openshift-enterprise
 
-openshift_disable_check="disk_availability,memory_availability,docker_image_availability"
+openshift_disable_check="disk_availability,memory_availability,docker_image_availability,package_version,package_availability"
 
 openshift_image_tag=v{{ osrelease }}
 openshift_pkg_version=-{{ osrelease }}
